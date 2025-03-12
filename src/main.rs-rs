@@ -1,0 +1,34 @@
+use std::env;
+use strsim::normalized_damerau_levenshtein;
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::fs::File;
+use std::path::PathBuf;
+use nom::character::complete::alphanumeric0;
+use nom::bytes::complete::tag;
+use std::io::BufReader;
+use nom::IResult;
+use nom::multi::separated_list0;
+use nom::Parser;
+use std::io::prelude::*;
+
+fn main() {
+    let input = env::args().skip(1).next().unwrap();
+    println!("{}", normalized_damerau_levenshtein(&input, "dh100"));
+    println!("{:#?}", server_list());
+}
+
+
+fn list_init(){
+
+}
+fn server_list () ->IResult<&'static str, Vec<&'static str>> {
+    let config_file = PathBuf::from("~/.ssh/config");
+    let file = File::open(config_file);
+    let input = String::new();
+    let mut buf_reader = BufReader::new(file);
+    buf_reader.read_to_string(&mut input).unwrap();
+
+    separated_list0(tag("\n\n"), alphanumeric0).parse(&input)
+
+
+}

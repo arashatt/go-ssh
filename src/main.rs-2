@@ -1,0 +1,84 @@
+use std::{io, sync::atomic::{AtomicBool, Ordering}, sync::Arc};
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::{
+    backend::{Backend, CrosstermBackend},
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Style},
+    widgets::{Block, Borders, Paragraph},
+    Terminal,
+};
+
+fn main() -> io::Result<()> {
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    }).expect("Error setting Ctrl-C handler");
+    enable_raw_mode()?;  // Do not disable UNIX signals
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let mut input = String::new();
+    let res = run_app(&mut terminal, &mut input, running.clone());
+
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    terminal.show_cursor()?;
+
+    if let Err(err) = res {
+        println!("Error: {:?}", err);
+    }
+
+    // Print the user input after exiting the UI
+    println!("User Input: {}", input);
+
+    Ok(())
+}
+
+fn run_app<B: Backend>(terminal: &mut Terminal<B>, input: &mut String, running: Arc<AtomicBool>) -> io::Result<()> {
+    loop {
+        terminal.draw(|f| {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Length(3), // Menu
+                    Constraint::Min(1),    // Input Box
+                ])
+                .split(f.size());
+
+            let menu = Paragraph::new("Menu: Type and press Enter to submit. Press Esc to exit.")
+                .style(Style::default().fg(Color::Yellow));
+            f.render_widget(menu, chunks[0]);
+
+            let block = Block::default().title("Input Box").borders(Borders::ALL);
+            let paragraph = Paragraph::new(input.as_str()).block(block).style(Style::default().fg(Color::White));
+            f.render_widget(paragraph, chunks[1]);
+        })?;
+
+        if event::poll(std::time::Duration::from_millis(250))? {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Char('c') if key.modifiers.contains(event::KeyModifiers::CONTROL) => break, // Handle Ctrl+C
+                    KeyCode::Char('d') if key.modifiers.contains(event::KeyModifiers::CONTROL) => break, // Handle Ctrl+D
+                    KeyCode::Esc => break,
+                    KeyCode::Enter => break, // Stop input on Enter
+                    KeyCode::Char(c) => input.push(c),
+                    KeyCode::Backspace => { input.pop(); },
+                    _ => {}
+                }
+            }
+        }
+    }
+    Ok(())
+}
