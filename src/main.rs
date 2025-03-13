@@ -1,3 +1,5 @@
+//mod list;
+//use list::Server;
 use std::{
     io,
     sync::{atomic::{AtomicBool, Ordering}, Arc},
@@ -63,8 +65,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Length(3), // Search Box
                     Constraint::Min(1),    // List of Answers
+                    Constraint::Length(3), // Search Box
                 ])
                 .split(f.size());
 
@@ -73,7 +75,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
             let search_paragraph = Paragraph::new(search_query.as_str())
                 .block(search_block)
                 .style(Style::default().fg(Color::White));
-            f.render_widget(search_paragraph, chunks[0]);
 
             // List of Answers
             let list_items: Vec<ListItem> = filtered_answers
@@ -88,8 +89,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
                     ListItem::new(item.clone()).style(style)
                 })
                 .collect();
-            let list = List::new(list_items).block(Block::default().title("Answers").borders(Borders::ALL));
-            f.render_widget(list, chunks[1]);
+            let list = List::new(list_items).block(Block::default().title("Limoo Host Servers").borders(Borders::ALL));
+            f.render_widget(list, chunks[0]);
+            f.render_widget(search_paragraph, chunks[1]);
         })?;
 
         if event::poll(std::time::Duration::from_millis(250))? {

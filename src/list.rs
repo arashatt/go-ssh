@@ -11,24 +11,22 @@ use nom::multi::separated_list0;
 use nom::Parser;
 use std::io::prelude::*;
 
-fn main() {
-    let input = env::args().skip(1).next().unwrap();
-    println!("{}", normalized_damerau_levenshtein(&input, "dh100"));
-    println!("{:#?}", server_list());
+pub struct Server{
+input : String
 }
-
-
-fn list_init(){
-
-}
-fn server_list () ->IResult<&'static str, Vec<&'static str>> {
+impl Server {
+pub fn get_list( )-> String{
+    let mut input = String::new();
     let config_file = PathBuf::from("~/.ssh/config");
-    let file = File::open(config_file);
-    let input = String::new();
+    let file = File::open(config_file).unwrap();
     let mut buf_reader = BufReader::new(file);
-    buf_reader.read_to_string(&mut input).unwrap();
+    buf_reader.read_to_string(&mut self.input).unwrap();
+    input
+ 
+}
+pub fn parse_list (input: &str) ->IResult<&'static str, Vec<&'static str>> {
 
-    separated_list0(tag("\n\n"), alphanumeric0).parse(&input)
+    separated_list0(tag("\n\n"), alphanumeric0).parse(input)
 
-
+}
 }
