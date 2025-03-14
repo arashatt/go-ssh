@@ -13,10 +13,9 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Gauge},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
     Terminal,
 };
-use strsim::{normalized_levenshtein, normalized_damerau_levenshtein};
 
 fn main() -> io::Result<()> {
     let running = Arc::new(AtomicBool::new(true));
@@ -51,18 +50,13 @@ fn main() -> io::Result<()> {
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> io::Result<()> {
     let mut search_query = String::new();
-    let server = Server{};
-    let config_file = Server::get_list();
-    let (_, list) = Server::parse_list(&config_file).unwrap();
-    let list = Server::hash_list(list);
-    let answers = list; 
-  //  let answers = vec![
-  //      "Rust is a systems programming language.",
-  //      "Cargo is Rust’s package manager.",
-  //      "Rust has powerful ownership and borrowing rules.",
-  //      "Tokio is an async runtime for Rust.",
-  //      "Rust is great for safety and performance.",
-  //  ];
+    let answers = vec![
+        "Rust is a systems programming language.",
+        "Cargo is Rust’s package manager.",
+        "Rust has powerful ownership and borrowing rules.",
+        "Tokio is an async runtime for Rust.",
+        "Rust is great for safety and performance.",
+    ];
     let mut filtered_answers = answers.clone();
     let mut selected_index: usize = 0;
 
@@ -92,12 +86,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    ListItem::new(format!("{} : {}", item.hostname, item.score) ).style(style)
+                    ListItem::new(item.clone()).style(style)
                 })
                 .collect();
             let list = List::new(list_items).block(Block::default().title("Limoo Host Servers").borders(Borders::ALL));
-            
-
             f.render_widget(list, chunks[0]);
             f.render_widget(search_paragraph, chunks[1]);
         })?;
@@ -126,33 +118,23 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
                     }
                     KeyCode::Backspace => {
                         search_query.pop();
-                        selected_index = 0; // Reset selection after filtering
                     }
                     KeyCode::Char(c) => {
                         search_query.push(c);
-                        selected_index = 0; // Reset selection after filtering
                     }
                     _ => {}
                 }
 
                 // Filter answers based on the search query
-              //  filtered_answers = answers
-              //      .iter()
-              //      .filter(|a| a.hostname.to_lowercase().contains(&search_query.to_lowercase()))
-              //      .cloned()
-              //      .collect();
-            filtered_answers = answers.clone();
-            for mut item in &mut filtered_answers{
-                //item.score = normalized_damerau_levenshtein(&search_query, &item.hostname);
-                item.score = normalized_levenshtein(&search_query, &item.hostname);
-            }
-           filtered_answers.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap() );
-
-
+                filtered_answers = answers
+                    .iter()
+                    .filter(|a| a.to_lowercase().contains(&search_query.to_lowercase()))
+                    .cloned()
+                    .collect();
+                selected_index = 0; // Reset selection after filtering
             }
         }
     }
-
     Ok(())
 }
 
