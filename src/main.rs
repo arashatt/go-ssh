@@ -114,6 +114,11 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
                 match key.code {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => return Ok(None),
                     KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => return Ok(None),
+                    KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        search_query.pop();
+                        selected_index = 0; // Reset selection after filtering
+                    }
+
                     KeyCode::Esc => return Ok(None),
                     KeyCode::Enter => {
                         if let Some(selected) = filtered_answers.get(selected_index) {
