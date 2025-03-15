@@ -1,7 +1,5 @@
-use std::cmp::Ordering;
 use std::env;
 use strsim::normalized_damerau_levenshtein;
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::fs::File;
 use std::path::PathBuf;
 use nom::character::complete::{alphanumeric0, newline, multispace0};
@@ -15,7 +13,6 @@ use nom::bytes::complete::take_until;
 use nom::sequence::{delimited, pair, preceded};
 // Import (via `use`) the `fmt` module to make it available.
 use std::fmt;
-
 pub struct Server {}
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct List {
@@ -30,14 +27,22 @@ impl fmt::Display for List {
         // stream: `f`. Returns `fmt::Result` which indicates whether the
         // operation succeeded or failed. Note that `write!` uses syntax which
         // is very similar to `println!`.
-        write!(f, "{}", self.hostname)
+        write!(f, "{}", self.alias)
     }
+}
+fn expand_tilde(path: &str) -> PathBuf {
+    if let Some(stripped) = path.strip_prefix("~/") {
+        if let Some(home) = env::var_os("HOME") {
+            return PathBuf::from(home).join(stripped);
+        }
+    }
+    PathBuf::from(path)
 }
 
 impl Server {
 pub fn get_list( )-> String{
     let mut input = String::new();
-    let config_file = PathBuf::from("/root/.ssh/config");
+    let config_file = expand_tilde("~/.ssh/config");
     let file = File::open(config_file).unwrap();
     let mut buf_reader = BufReader::new(file);
     buf_reader.read_to_string(&mut input).unwrap();

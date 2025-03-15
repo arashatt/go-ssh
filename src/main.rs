@@ -3,6 +3,7 @@ use list::Server;
 use std::{
     io,
     sync::{atomic::{AtomicBool, Ordering}, Arc},
+    process::Command
 };
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
@@ -13,10 +14,11 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Gauge},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Gauge, Padding},
     Terminal,
 };
 use strsim::{normalized_levenshtein, normalized_damerau_levenshtein};
+use std::os::unix::process::CommandExt;
 
 fn main() -> io::Result<()> {
     let running = Arc::new(AtomicBool::new(true));
@@ -44,12 +46,15 @@ fn main() -> io::Result<()> {
 
     if let Err(err) = res {
         println!("Error: {:?}", err);
+    }else{
+if let Some(server) = res.unwrap(){
+let _ = Command::new("ssh").arg(server.alias).exec();
     }
-
+    }
     Ok(())
 }
 
-fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> io::Result<()> {
+fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> io::Result<Option<list::List>> {
     let mut search_query = String::new();
     let server = Server{};
     let config_file = Server::get_list();
@@ -92,7 +97,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    ListItem::new(format!("{} : {}", item.hostname, item.score) ).style(style)
+                    ListItem::new(item.hostname.split(".").next().unwrap() ).style(style)
+                    // For Debug:
+                    //ListItem::new(format!("{} : {}", item.hostname.split(".").next().unwrap(), item.score) ).style(style)
                 })
                 .collect();
             let list = List::new(list_items).block(Block::default().title("Limoo Host Servers").borders(Borders::ALL));
@@ -105,12 +112,11 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
         if event::poll(std::time::Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
                 match key.code {
-                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
-                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => break,
-                    KeyCode::Esc => break,
+                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => return Ok(None),
+                    KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => return Ok(None),
+                    KeyCode::Esc => return Ok(None),
                     KeyCode::Enter => {
                         if let Some(selected) = filtered_answers.get(selected_index) {
-                            println!("Selected: {}", selected);
                         }
                         break;
                     }
@@ -148,11 +154,10 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
             }
            filtered_answers.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap() );
 
-
             }
         }
     }
 
-    Ok(())
+    Ok(Some(filtered_answers[selected_index].clone()))
 }
 
