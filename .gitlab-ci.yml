@@ -1,0 +1,11 @@
+stages:
+  - build
+
+build:
+  stage: build
+  image: rust:latest
+  script:
+    - cargo build --release
+  artifacts:
+    paths:
+      - target/release/my_binary
