@@ -14,7 +14,7 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Gauge, Padding},
+    widgets::{Block, Borders, List, ListItem, Paragraph },
     Terminal,
 };
 use strsim::{normalized_levenshtein, normalized_damerau_levenshtein};
@@ -61,13 +61,6 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
     let (_, list) = Server::parse_list(&config_file).unwrap();
     let list = Server::hash_list(list);
     let answers = list; 
-  //  let answers = vec![
-  //      "Rust is a systems programming language.",
-  //      "Cargo is Rust’s package manager.",
-  //      "Rust has powerful ownership and borrowing rules.",
-  //      "Tokio is an async runtime for Rust.",
-  //      "Rust is great for safety and performance.",
-  //  ];
     let mut filtered_answers = answers.clone();
     let mut selected_index: usize = 0;
 

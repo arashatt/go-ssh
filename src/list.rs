@@ -1,16 +1,14 @@
 use std::env;
-use strsim::normalized_damerau_levenshtein;
 use std::fs::File;
 use std::path::PathBuf;
-use nom::character::complete::{alphanumeric0, newline, multispace0};
-use nom::bytes::complete::tag;
+use nom::character::complete::{newline, multispace0};
 use std::io::BufReader;
 use nom::IResult;
 use nom::multi::separated_list0;
 use nom::Parser;
 use std::io::prelude::*;
 use nom::bytes::complete::take_until;
-use nom::sequence::{delimited, pair, preceded};
+use nom::sequence::{delimited, pair };
 // Import (via `use`) the `fmt` module to make it available.
 use std::fmt;
 pub struct Server {}
