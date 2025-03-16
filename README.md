@@ -1,6 +1,6 @@
 ## How to build this project
 
-assuming that you have installed (rust)[https://www.rust-lang.org/] compiler, you can build the project with
+assuming that you have installed [rust](https://www.rust-lang.org) compiler, you can build the project with
 ```
 cargo build --release
 ```
