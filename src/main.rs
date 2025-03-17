@@ -14,10 +14,10 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState },
+    widgets::{Block, Borders, List, ListItem, Paragraph },
     Terminal,
 };
-use strsim::{normalized_levenshtein, normalized_damerau_levenshtein};
+use strsim::normalized_levenshtein;
 use std::os::unix::process::CommandExt;
 
 fn main() -> io::Result<()> {
@@ -148,7 +148,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
               //      .cloned()
               //      .collect();
             filtered_answers = answers.clone();
-            for mut item in &mut filtered_answers{
+            for item in &mut filtered_answers{
                 //item.score = normalized_damerau_levenshtein(&search_query, &item.hostname);
                 item.score = normalized_levenshtein(&search_query, &item.hostname);
             }
