@@ -66,7 +66,9 @@ pub fn hash_list(list: Vec<&str>) -> Vec<List>{
                }
                
            }
+           if !server.hostname.is_empty() && !server.alias.is_empty() {
                servers.push(server);
+           }
        }
        servers
  

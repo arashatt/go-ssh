@@ -14,7 +14,7 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph },
+    widgets::{Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState },
     Terminal,
 };
 use strsim::{normalized_levenshtein, normalized_damerau_levenshtein};
@@ -64,6 +64,8 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
     let mut filtered_answers = answers.clone();
     let mut selected_index: usize = 0;
 
+    let visible_lines = 3; // Number of lines visible at a time
+
     loop {
         terminal.draw(|f| {
             let chunks = Layout::default()
@@ -90,9 +92,9 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    ListItem::new(item.hostname.split(".").next().unwrap() ).style(style)
+                    //ListItem::new(item.hostname.split(".").next().unwrap() ).style(style)
                     // For Debug:
-                    //ListItem::new(format!("{} : {}", item.hostname.split(".").next().unwrap(), item.score) ).style(style)
+                    ListItem::new(format!("{} : {}", item.hostname.split(".").next().unwrap(), item.score) ).style(style)
                 })
                 .collect();
             let list = List::new(list_items).block(Block::default().title("Limoo Host Servers").borders(Borders::ALL));
