@@ -9,6 +9,7 @@ use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition}
 };
 use ratatui::{
     backend::{Backend, CrosstermBackend},
@@ -51,6 +52,8 @@ if let Some(server) = res.unwrap(){
 let _ = Command::new("ssh").arg(server.alias).exec();
     }
     }
+    terminal.clear();
+    println!("Done");
     Ok(())
 }
 
@@ -151,6 +154,7 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, running: Arc<AtomicBool>) -> 
             for item in &mut filtered_answers{
                 //item.score = normalized_damerau_levenshtein(&search_query, &item.hostname);
                 item.score = normalized_levenshtein(&search_query, &item.hostname);
+                item.score = strsim::jaro_winkler(&search_query, &item.hostname);
             }
            filtered_answers.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap() );
 
