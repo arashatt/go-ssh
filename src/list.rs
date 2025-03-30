@@ -1,22 +1,22 @@
+use nom::IResult;
+use nom::Parser;
+use nom::bytes::complete::take_until;
+use nom::character::complete::{multispace0, newline};
+use nom::multi::separated_list0;
+use nom::sequence::{delimited, pair};
 use std::env;
 use std::fs::File;
-use std::path::PathBuf;
-use nom::character::complete::{newline, multispace0};
 use std::io::BufReader;
-use nom::IResult;
-use nom::multi::separated_list0;
-use nom::Parser;
 use std::io::prelude::*;
-use nom::bytes::complete::take_until;
-use nom::sequence::{delimited, pair };
+use std::path::PathBuf;
 // Import (via `use`) the `fmt` module to make it available.
 use std::fmt;
 pub struct Server {}
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct List {
-pub score: f64,
-pub hostname: String,
-pub alias: String,
+    pub score: f64,
+    pub hostname: String,
+    pub alias: String,
 }
 
 impl fmt::Display for List {
@@ -38,60 +38,63 @@ fn expand_tilde(path: &str) -> PathBuf {
 }
 
 impl Server {
-pub fn get_list( )-> String{
-    let mut input = String::new();
-    let config_file = expand_tilde("~/.ssh/config");
-    let file = File::open(config_file).unwrap();
-    let mut buf_reader = BufReader::new(file);
-    buf_reader.read_to_string(&mut input).unwrap();
-    input
- 
-}
-pub fn parse_list (input: &str) ->IResult<&str, Vec<&str>> {
-    delimited(multispace0, separated_list0(pair(newline,newline),take_until("\n\n" )), multispace0).parse(input)
-}
-pub fn hash_list(list: Vec<&str>) -> Vec<List>{
-    let mut servers = Vec::new();
-       for item in list {
-           let mut server = List{ hostname: "".to_owned(), alias: "".to_owned(), score: 0.0};
-           for i in item.split("\n").map(|f| f.trim()){
-               let mut i = i.split(" "); 
-               let _1 = i.next().unwrap_or("");
-               let _2 = i.next().unwrap_or("");
-               if _1.starts_with("HostName") {
-                   server.hostname = _2.to_owned();
-
-               }else if _1.starts_with("Host"){
-                   server.alias = _2.to_owned();
-               }
-               
-           }
-           if !server.hostname.is_empty() && !server.alias.is_empty() {
-               servers.push(server);
-           }
-       }
-       servers
- 
-}
-
-
+    pub fn get_list() -> String {
+        let mut input = String::new();
+        let config_file = expand_tilde("~/.ssh/config");
+        let file = File::open(config_file).unwrap();
+        let mut buf_reader = BufReader::new(file);
+        buf_reader.read_to_string(&mut input).unwrap();
+        input
+    }
+    pub fn parse_list(input: &str) -> IResult<&str, Vec<&str>> {
+        delimited(
+            multispace0,
+            separated_list0(pair(newline, newline), take_until("\n\n")),
+            multispace0,
+        )
+        .parse(input)
+    }
+    pub fn hash_list(list: Vec<&str>) -> Vec<List> {
+        let mut servers = Vec::new();
+        for item in list {
+            let mut server = List {
+                hostname: "".to_owned(),
+                alias: "".to_owned(),
+                score: 0.0,
+            };
+            for i in item.split("\n").map(|f| f.trim()) {
+                let mut i = i.split(" ");
+                let _1 = i.next().unwrap_or("");
+                let _2 = i.next().unwrap_or("");
+                if _1.starts_with("HostName") {
+                    server.hostname = _2.to_owned();
+                } else if _1.starts_with("Host") {
+                    server.alias = _2.to_owned();
+                }
+            }
+            if !server.hostname.is_empty() && !server.alias.is_empty() {
+                servers.push(server);
+            }
+        }
+        servers
+    }
 }
 
 #[cfg(test)]
-mod test{
-use super::*;
+mod test {
+    use super::*;
 
     #[test]
-    fn print_debug(){
-         let server: Server = Server{};
-         let config_file: String = Server::get_list();
+    fn print_debug() {
+        let server: Server = Server {};
+        let config_file: String = Server::get_list();
         println!("{:#?}", Server::parse_list(&config_file));
     }
     #[test]
-    fn print_list_debug(){
-     let  server: Server = Server{};
-     let  config_file: String = Server::get_list();
-     let (_, list) = Server::parse_list(&config_file).unwrap();
-    println!("{:#?}", Server::hash_list(list));
+    fn print_list_debug() {
+        let server: Server = Server {};
+        let config_file: String = Server::get_list();
+        let (_, list) = Server::parse_list(&config_file).unwrap();
+        println!("{:#?}", Server::hash_list(list));
     }
 }

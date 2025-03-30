@@ -1,10 +1,7 @@
 mod list;
 use crossterm::{
     cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition, Show},
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton,
-        MouseEvent, MouseEventKind,
-    },
+    event::{self, MouseEvent, MouseButton, MouseEventKind, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{
         Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
@@ -139,9 +136,10 @@ fn run_app<B: Backend>(
             f.render_widget(search_paragraph, chunks[1]);
             let cursor_x = chunks[1].x + cursor_pos as u16 + 1; // +1 for padding inside the block
             let cursor_y = chunks[1].y + 1;
-            // - execute!(stdout(), Show, MoveTo(cursor_x, cursor_y)).unwrap();})?;
+            execute!(stdout(), Show, MoveTo(cursor_x, cursor_y)).unwrap();
         })?;
-        // Capture mouse events
+
+          // Capture mouse events
 
         if event::poll(std::time::Duration::from_millis(250))? {
             if let Event::Key(key) = event::read()? {
@@ -205,6 +203,24 @@ fn run_app<B: Backend>(
                     }
                     _ => {}
                 }
+                if let event::Event::Mouse(MouseEvent {
+                kind,
+                column,
+                row,
+                ..
+            }) = event::read()?
+            {
+                match kind {
+                    MouseEventKind::Down(MouseButton::Left) => {
+                        // Check if the mouse click is within the list items
+                        return Ok(None);
+                        if row >= 1 && row < 5 { // List range based on our items
+                            selected_index = (row - 1) as usize; // Adjust index to the list range
+                        }
+                    }
+                    _ => {}
+                }
+            } 
                 // Filter answers based on the search query
                 //  filtered_answers = answers
                 //      .iter()
@@ -221,5 +237,6 @@ fn run_app<B: Backend>(
             }
         }
     }
+
     Ok(Some(filtered_answers[selected_index].clone()))
 }
