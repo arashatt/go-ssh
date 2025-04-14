@@ -1,15 +1,10 @@
 mod list;
+use crossterm::event::MouseEventKind;
 use crossterm::{
-    cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition, Show},
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers, MouseButton,
-        MouseEvent, MouseEventKind,
-    },
+    cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{
-        Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
-        enable_raw_mode,
-    },
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use list::Server;
 use ratatui::{
@@ -17,21 +12,27 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    text::Span,
     widgets::{Block, Borders, List, ListItem, Paragraph},
 };
+use std::env;
+use std::fs::OpenOptions;
+use std::io::{Read, Write};
 use std::os::unix::process::CommandExt;
-use std::thread;
+use std::time::{Duration, Instant};
 use std::{
-    io::{self, Write, stdout},
+    io,
     process::Command,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
 };
+use strsim::normalized_damerau_levenshtein;
 use strsim::normalized_levenshtein;
+use tui_textarea::TextArea;
+
 fn main() -> io::Result<()> {
+    let arg = env::args().nth(1); // 0 is the program name, so 1 is the first real argument
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
 
@@ -42,11 +43,16 @@ fn main() -> io::Result<()> {
 
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(
+        stdout,
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableMouseCapture
+    )?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let res = run_app(&mut terminal, running.clone());
+    let res = run_app(&mut terminal, running.clone(), arg);
 
     disable_raw_mode()?;
     execute!(
@@ -60,13 +66,9 @@ fn main() -> io::Result<()> {
         println!("Error: {:?}", err);
     } else {
         if let Some(server) = res.unwrap() {
-            let mut ssh = Command::new("ssh")
-                .arg(server.alias)
-                .spawn()
-                .expect("Failed to execute the command.");
-            ssh.wait().expect("failed to wait for the process.");
+            let _ = Command::new("ssh").arg(server.alias).exec();
             //println!("{:#?}", server);
-            execute!(io::stdout(), Clear(ClearType::All), MoveTo(0, 0)).unwrap();
+            terminal.clear();
         }
     }
     Ok(())
@@ -75,16 +77,28 @@ fn main() -> io::Result<()> {
 fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     running: Arc<AtomicBool>,
+    arg: Option<String>,
 ) -> io::Result<Option<list::List>> {
     let mut search_query = String::new();
-    let mut cursor_pos = 0; // Track cursor position inside input
     let server = Server {};
     let config_file = Server::get_list();
     let (_, list) = Server::parse_list(&config_file).unwrap();
     let list = Server::hash_list(list);
+
     let answers = list;
     let mut filtered_answers = answers.clone();
     let mut selected_index: usize = 0;
+    let mut textarea = TextArea::default();
+    let mut last_click_time: Option<Instant> = None;
+    let mut last_click_position: Option<(u16, u16)> = None;
+    let double_click_threshold = Duration::from_millis(300); // 300ms for a double-click
+    textarea.set_block(Block::default().title("Search").borders(Borders::ALL));
+    match arg {
+        Some(argument) => {
+            textarea.insert_str(argument);
+        }
+        _ => {}
+    }
 
     let visible_lines = 3; // Number of lines visible at a time
 
@@ -100,7 +114,7 @@ fn run_app<B: Backend>(
 
             // Search Box
             let search_block = Block::default().title("Search").borders(Borders::ALL);
-            let search_paragraph = Paragraph::new(Span::raw(search_query.as_str()))
+            let search_paragraph = Paragraph::new(search_query.as_str())
                 .block(search_block)
                 .style(Style::default().fg(Color::White));
 
@@ -116,35 +130,64 @@ fn run_app<B: Backend>(
                     };
                     //ListItem::new(item.hostname.split(".").next().unwrap() ).style(style)
                     // For Debug:
-                    ListItem::new(format!(
-                        "{} : {}",
-                        item.hostname.split(".").next().unwrap(),
-                        item.score
-                    ))
-                    .style(style)
+                    ListItem::new(item.hostname.split(".").next().unwrap()).style(style)
                 })
                 .collect();
-            let list = List::new(list_items)
-                .block(
-                    Block::default()
-                        .title("Limoo Host Servers")
-                        .borders(Borders::ALL),
-                )
-                .highlight_symbol(">>")
-                .highlight_style(
-                    ratatui::style::Style::default().fg(ratatui::style::Color::Yellow),
-                );
+            let list = List::new(list_items).block(
+                Block::default()
+                    .title("Limoo Host Servers")
+                    .borders(Borders::ALL),
+            );
 
             f.render_widget(list, chunks[0]);
-            f.render_widget(search_paragraph, chunks[1]);
-            let cursor_x = chunks[1].x + cursor_pos as u16 + 1; // +1 for padding inside the block
-            let cursor_y = chunks[1].y + 1;
-            // - execute!(stdout(), Show, MoveTo(cursor_x, cursor_y)).unwrap();})?;
+            // f.render_widget(search_paragraph, chunks[1]);
+            f.render_widget(&textarea, chunks[1]);
         })?;
-        // Capture mouse events
 
-        if event::poll(std::time::Duration::from_millis(250))? {
-            if let Event::Key(key) = event::read()? {
+        if event::poll(std::time::Duration::from_millis(20))? {
+            let event = event::read()?;
+            if let Event::Mouse(mouse_event) = event {
+                match mouse_event.kind {
+                    MouseEventKind::Down(_) => {
+                        let (x, y) = (mouse_event.column, mouse_event.row);
+
+                        // Write a message to the socket
+                        //            pipe.write_all(format!("x:{} y:{}\n", x, y).as_bytes())?;
+                        selected_index = (y - 1) as usize;
+
+                        let current_time = Instant::now();
+                        if let Some(last_time) = last_click_time {
+                            // Check if time difference between clicks is within double-click threshold
+                            if current_time.duration_since(last_time) <= double_click_threshold {
+                                if let Some((last_x, last_y)) = last_click_position {
+                                    if (last_x == x && last_y == y) {
+                                        // Double-click detected on the same position
+                                        return Ok(Some(filtered_answers[selected_index].clone()));
+                                    }
+                                }
+                            }
+                        }
+
+                        // Update the last click time and position
+                        last_click_time = Some(current_time);
+                        last_click_position = Some((x, y));
+
+                        // You need to determine if (x, y) is within the list widget.
+                        // If so, map `y` to list index and update your selection.
+                    }
+                    MouseEventKind::ScrollUp => {
+                        if selected_index > 0 {
+                        selected_index -= 1;
+                        }
+                    }
+                    MouseEventKind::ScrollDown => {
+                        if selected_index < filtered_answers.len().saturating_sub(1) {
+                        selected_index += 1;
+                        }
+                    }
+                    _ => {}
+                }
+            } else if let Event::Key(key) = event {
                 match key.code {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         return Ok(None);
@@ -172,54 +215,78 @@ fn run_app<B: Backend>(
                             selected_index += 1;
                         }
                     }
-                    KeyCode::Esc => break, // Exit on ESC
-                    KeyCode::Enter => {
-                        search_query.clear();
-                        cursor_pos = 0;
-                    }
-                    KeyCode::Backspace => {
-                        // Delete character at cursor position
-                        if cursor_pos > 0 {
-                            search_query.remove(cursor_pos - 1);
-                            cursor_pos -= 1;
-                            selected_index = 0;
-                        }
-                    }
-                    KeyCode::Char(c) => {
-                        // Insert character at cursor position
-                        search_query.insert(cursor_pos, c);
-                        cursor_pos += 1;
-                        selected_index = 0;
-                    }
-                    KeyCode::Left => {
-                        // Move cursor left
-                        if cursor_pos > 0 {
-                            cursor_pos -= 1;
-                        }
-                    }
-                    KeyCode::Right => {
-                        // Move cursor right
-                        if cursor_pos < search_query.len() {
-                            cursor_pos += 1;
-                        }
-                    }
                     _ => {}
                 }
+                textarea.input(key);
+                let search_query = textarea.lines().join("\n");
                 // Filter answers based on the search query
-                //  filtered_answers = answers
-                //      .iter()
-                //      .filter(|a| a.hostname.to_lowercase().contains(&search_query.to_lowercase()))
-                //      .cloned()
-                //      .collect();
-                filtered_answers = answers.clone();
+                filtered_answers = answers
+                    .iter()
+                    .filter(|a| {
+                        num_extract(a.hostname.split(".").next().unwrap())
+                            .contains(&num_extract(&search_query))
+                            && char_extract(a.hostname.split(".").next().unwrap())
+                                .contains(&char_extract(&search_query))
+                    })
+                    .cloned()
+                    .collect();
                 for item in &mut filtered_answers {
-                    //item.score = normalized_damerau_levenshtein(&search_query, &item.hostname);
-                    //item.score = normalized_levenshtein(&search_query, &item.hostname);
+                    //   item.score = normalized_damerau_levenshtein(
+                    //       &search_query,
+                    //     &item.hostname.split(".").next().unwrap(),
+                    //   );
                     item.score = strsim::jaro_winkler(&search_query, &item.hostname);
                 }
                 filtered_answers.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
             }
         }
     }
+
     Ok(Some(filtered_answers[selected_index].clone()))
 }
+
+fn num_extract(name: &str) -> String {
+    name.chars()
+        .filter(|a| *a >= '0' && *a <= '9')
+        .collect::<String>()
+        .to_owned()
+}
+fn char_extract(name: &str) -> String {
+    name.chars()
+        .filter(|a| (*a >= 'a' && *a <= 'z') || (*a >= 'A' && *a <= 'Z'))
+        .collect::<String>()
+        .to_owned()
+}
+
+#[test]
+fn char_extract_test() {
+    let server = Server {};
+    let config_file = Server::get_list();
+    let (_, list) = Server::parse_list(&config_file).unwrap();
+
+    let list = Server::hash_list(list);
+    for i in list {
+        let name = i.hostname.split(".").next().unwrap();
+
+        println!("{}: {}", name, char_extract(name));
+    }
+}
+#[test]
+fn num_extract_test() {
+    let server = Server {};
+    let config_file = Server::get_list();
+    let (_, list) = Server::parse_list(&config_file).unwrap();
+
+    let list = Server::hash_list(list);
+    for i in list {
+        let name = i.hostname.split(".").next().unwrap();
+
+        println!("{}: {}", name, num_extract(name));
+    }
+}
+/*
+the right way to implement the functionality of gossh is to split
+numbers from alphabet charcters in the input.
+For example 100ooz input definitely should have highest score with yooz100,
+but since the number is in the beginning, it matches pirouz100
+*/
