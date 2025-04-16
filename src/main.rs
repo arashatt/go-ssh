@@ -4,7 +4,7 @@ use crossterm::{
     cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition},
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode, Clear, ClearType},
 };
 use list::Server;
 use ratatui::widgets::ListState;
@@ -69,13 +69,20 @@ fn main() -> io::Result<()> {
         println!("Error: {:?}", err);
     } else {
         if let Some(server) = res.unwrap() {
+
+    let mut stdout = std::io::stdout();
+    // Move cursor to the top-left corner
+    execute!(stdout, MoveTo(0, 0)).unwrap();
+
+    // Clear the entire screen
+    execute!(stdout, Clear(ClearType::All)).unwrap();
+
+
+            let _ = Command::new("tput").arg("reset").spawn();
             let _ = Command::new("ssh").arg(server.alias).exec();
 
-            //        println!("{:#?}", server);
         }
     }
-
-    terminal.clear()?;
 
     Ok(())
 }
