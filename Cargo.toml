@@ -9,4 +9,5 @@ ctrlc = { version = "3.4.5", features = ["termination"] }
 nom = "8.0.0"
 ratatui = "0.29.0"
 strsim = "0.11.1"
+tui-scrollview = "0.5.1"
 tui-textarea = "0.7.0"

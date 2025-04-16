@@ -7,6 +7,8 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use list::Server;
+use ratatui::widgets::ListState;
+use ratatui::widgets::Padding;
 use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
@@ -18,6 +20,7 @@ use std::env;
 use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::os::unix::process::CommandExt;
+use std::thread;
 use std::time::{Duration, Instant};
 use std::{
     io,
@@ -66,11 +69,14 @@ fn main() -> io::Result<()> {
         println!("Error: {:?}", err);
     } else {
         if let Some(server) = res.unwrap() {
-            let _ = Command::new("ssh").arg(server.alias).exec();
-            //println!("{:#?}", server);
-            terminal.clear();
+            //            let _ = Command::new("ssh").arg(server.alias).exec();
+
+            println!("{:#?}", server);
         }
     }
+
+    //terminal.clear()?;
+
     Ok(())
 }
 
@@ -82,26 +88,43 @@ fn run_app<B: Backend>(
     let mut search_query = String::new();
     let server = Server {};
     let config_file = Server::get_list();
-    let (_, list) = Server::parse_list(&config_file).unwrap();
-    let list = Server::hash_list(list);
-
-    let answers = list;
-    let mut filtered_answers = answers.clone();
-    let mut selected_index: usize = 0;
+    let (_, raw_list) = Server::parse_list(&config_file).unwrap();
+    let list :  Vec<list::List> = Server::hash_list(raw_list);
     let mut textarea = TextArea::default();
     let mut last_click_time: Option<Instant> = None;
     let mut last_click_position: Option<(u16, u16)> = None;
     let double_click_threshold = Duration::from_millis(300); // 300ms for a double-click
     textarea.set_block(Block::default().title("Search").borders(Borders::ALL));
+    let mut list_state = ListState::default();
+    list_state.select(Some(0)); // Start with first item selected
+    
+                        let mut binding  = list.clone();
     match arg {
         Some(argument) => {
             textarea.insert_str(argument);
-        }
+                binding = binding.iter()
+                .filter(|a| {
+                    num_extract(&a.display_name)
+                        .contains(&num_extract(&search_query))
+                        && char_extract(&a.display_name)
+                            .contains(&char_extract(&search_query))
+                })
+                .cloned()
+                    .collect();
+            for item in &mut binding {
+                //   item.score = normalized_damerau_levenshtein(
+                //       &search_query,
+                //     &item.hostname.split(".").next().unwrap(),
+                //   );
+                item.score = strsim::jaro_winkler(&search_query, &item.display_name);
+            }
+            binding.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+ 
+       }
         _ => {}
     }
 
-    let visible_lines = 3; // Number of lines visible at a time
-
+   let search_block = Block::default().title("Search").borders(Borders::ALL);
     loop {
         terminal.draw(|f| {
             let chunks = Layout::default()
@@ -113,38 +136,34 @@ fn run_app<B: Backend>(
                 .split(f.size());
 
             // Search Box
-            let search_block = Block::default().title("Search").borders(Borders::ALL);
-            let search_paragraph = Paragraph::new(search_query.as_str())
-                .block(search_block)
-                .style(Style::default().fg(Color::White));
-
-            // List of Answers
-            let list_items: Vec<ListItem> = filtered_answers
+            let list_items: Vec<ListItem> = binding
                 .iter()
                 .enumerate()
                 .map(|(i, item)| {
-                    let style = if i == selected_index {
+                    let style = if i == list_state.selected().unwrap() {
                         Style::default().fg(Color::Yellow)
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    //ListItem::new(item.hostname.split(".").next().unwrap() ).style(style)
-                    // For Debug:
-                    ListItem::new(item.hostname.split(".").next().unwrap()).style(style)
+                    ListItem::new(item.display_name.clone() ).style(style)
                 })
                 .collect();
-            let list = List::new(list_items).block(
-                Block::default()
-                    .title("Limoo Host Servers")
-                    .borders(Borders::ALL),
-            );
 
-            f.render_widget(list, chunks[0]);
-            // f.render_widget(search_paragraph, chunks[1]);
+            // List of Answers
+            let widget_list = List::new(list_items.clone())
+                .block(
+                    Block::default()
+                        .title("Limoo Host Servers")
+                        .borders(Borders::ALL),
+                )
+                .highlight_symbol(">> ");
+
+            //f.render_widget(list, chunks[0]);
+            f.render_stateful_widget(widget_list, chunks[0], &mut list_state);
             f.render_widget(&textarea, chunks[1]);
         })?;
 
-        if event::poll(std::time::Duration::from_millis(20))? {
+        if event::poll(std::time::Duration::from_millis(200))? {
             let event = event::read()?;
             if let Event::Mouse(mouse_event) = event {
                 match mouse_event.kind {
@@ -153,37 +172,56 @@ fn run_app<B: Backend>(
 
                         // Write a message to the socket
                         //            pipe.write_all(format!("x:{} y:{}\n", x, y).as_bytes())?;
-                        selected_index = (y - 1) as usize;
+                        if y > 0 {
+                            list_state.select(Some((y - 1) as usize));
 
-                        let current_time = Instant::now();
-                        if let Some(last_time) = last_click_time {
-                            // Check if time difference between clicks is within double-click threshold
-                            if current_time.duration_since(last_time) <= double_click_threshold {
-                                if let Some((last_x, last_y)) = last_click_position {
-                                    if (last_x == x && last_y == y) {
-                                        // Double-click detected on the same position
-                                        return Ok(Some(filtered_answers[selected_index].clone()));
+                            let current_time = Instant::now();
+                            if let Some(last_time) = last_click_time {
+                                // Check if time difference between clicks is within double-click threshold
+                                if current_time.duration_since(last_time) <= double_click_threshold
+                                {
+                                    if let Some((last_x, last_y)) = last_click_position {
+                                        if (last_x == x && last_y == y) {
+                                            // Double-click detected on the same position
+                                            //return Ok(Some(filtered_answers[selected_index].clone()));
+                                            break;
+                                        }
                                     }
                                 }
                             }
+
+                            // Update the last click time and position
+                            last_click_time = Some(current_time);
+                            last_click_position = Some((x, y));
                         }
-
-                        // Update the last click time and position
-                        last_click_time = Some(current_time);
-                        last_click_position = Some((x, y));
-
                         // You need to determine if (x, y) is within the list widget.
                         // If so, map `y` to list index and update your selection.
                     }
                     MouseEventKind::ScrollUp => {
-                        if selected_index > 0 {
-                        selected_index -= 1;
-                        }
+                        let i = match list_state.selected() {
+                            Some(i) => {
+                                if i == 0 {
+                                    binding.len() - 1
+                                } else {
+                                    i - 1
+                                }
+                            }
+                            None => 0,
+                        };
+                        list_state.select(Some(i));
                     }
                     MouseEventKind::ScrollDown => {
-                        if selected_index < filtered_answers.len().saturating_sub(1) {
-                        selected_index += 1;
-                        }
+                        let i = match list_state.selected() {
+                            Some(i) => {
+                                if i >= binding.len() - 1 {
+                                    0
+                                } else {
+                                    i + 1
+                                }
+                            }
+                            None => 0,
+                        };
+                        list_state.select(Some(i));
                     }
                     _ => {}
                 }
@@ -196,53 +234,79 @@ fn run_app<B: Backend>(
                         return Ok(None);
                     }
                     KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        search_query.pop();
-                        selected_index = 0; // Reset selection after filtering
+                        return Ok(None);
                     }
 
                     KeyCode::Esc => return Ok(None),
                     KeyCode::Enter => {
-                        if let Some(selected) = filtered_answers.get(selected_index) {}
+                        if binding.len() == 0 {
+                            continue;
+                        }
                         break;
                     }
-                    KeyCode::Up => {
-                        if selected_index > 0 {
-                            selected_index -= 1;
-                        }
-                    }
                     KeyCode::Down => {
-                        if selected_index < filtered_answers.len().saturating_sub(1) {
-                            selected_index += 1;
-                        }
+                        let i = match list_state.selected() {
+                            Some(i) => {
+                                if i >= binding.len() - 1 {
+                                    0
+                                } else {
+                                    i + 1
+                                }
+                            }
+                            None => 0,
+                        };
+                        list_state.select(Some(i));
                     }
+                    KeyCode::Up => {
+                        let i = match list_state.selected() {
+                            Some(i) => {
+                                if i == 0 {
+                                    binding.len() - 1
+                                } else {
+                                    i - 1
+                                }
+                            }
+                            None => 0,
+                        };
+                        list_state.select(Some(i));
+                    }
+
+                    KeyCode::Char(_) | KeyCode::Backspace => {
+                        list_state.select(Some(0));
+                    }
+
                     _ => {}
                 }
+
                 textarea.input(key);
-                let search_query = textarea.lines().join("\n");
-                // Filter answers based on the search query
-                filtered_answers = answers
-                    .iter()
-                    .filter(|a| {
-                        num_extract(a.hostname.split(".").next().unwrap())
-                            .contains(&num_extract(&search_query))
-                            && char_extract(a.hostname.split(".").next().unwrap())
-                                .contains(&char_extract(&search_query))
-                    })
-                    .cloned()
-                    .collect();
-                for item in &mut filtered_answers {
-                    //   item.score = normalized_damerau_levenshtein(
-                    //       &search_query,
-                    //     &item.hostname.split(".").next().unwrap(),
-                    //   );
-                    item.score = strsim::jaro_winkler(&search_query, &item.hostname);
-                }
-                filtered_answers.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
             }
+            let search_query = textarea.lines().join("\n");
+            // Filter answers based on the search query
+            binding = list.clone() 
+                .iter()
+                .filter(|a| {
+                    num_extract(&a.display_name)
+                        .contains(&num_extract(&search_query))
+                        && char_extract(&a.display_name)
+                            .contains(&char_extract(&search_query))
+                })
+                .cloned()
+                    .collect();
+            for item in &mut binding {
+                //   item.score = normalized_damerau_levenshtein(
+                //       &search_query,
+                //     &item.hostname.split(".").next().unwrap(),
+                //   );
+                item.score = strsim::jaro_winkler(&search_query, &item.display_name);
+            }
+            binding.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
         }
     }
 
-    Ok(Some(filtered_answers[selected_index].clone()))
+    match list_state.selected() {
+        Some(i) => Ok(Some(binding[i].clone())),
+        None => Ok(None),
+    }
 }
 
 fn num_extract(name: &str) -> String {
@@ -266,7 +330,7 @@ fn char_extract_test() {
 
     let list = Server::hash_list(list);
     for i in list {
-        let name = i.hostname.split(".").next().unwrap();
+        let name = i.display_name;
 
         println!("{}: {}", name, char_extract(name));
     }
@@ -279,11 +343,12 @@ fn num_extract_test() {
 
     let list = Server::hash_list(list);
     for i in list {
-        let name = i.hostname.split(".").next().unwrap();
+        let name = i.display_name;
 
         println!("{}: {}", name, num_extract(name));
     }
 }
+
 /*
 the right way to implement the functionality of gossh is to split
 numbers from alphabet charcters in the input.
