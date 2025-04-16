@@ -69,13 +69,13 @@ fn main() -> io::Result<()> {
         println!("Error: {:?}", err);
     } else {
         if let Some(server) = res.unwrap() {
-            //            let _ = Command::new("ssh").arg(server.alias).exec();
+            let _ = Command::new("ssh").arg(server.alias).exec();
 
-            println!("{:#?}", server);
+            //        println!("{:#?}", server);
         }
     }
 
-    //terminal.clear()?;
+    terminal.clear()?;
 
     Ok(())
 }
@@ -89,28 +89,29 @@ fn run_app<B: Backend>(
     let server = Server {};
     let config_file = Server::get_list();
     let (_, raw_list) = Server::parse_list(&config_file).unwrap();
-    let list :  Vec<list::List> = Server::hash_list(raw_list);
+    let list: Vec<list::List> = Server::hash_list(raw_list);
     let mut textarea = TextArea::default();
     let mut last_click_time: Option<Instant> = None;
     let mut last_click_position: Option<(u16, u16)> = None;
     let double_click_threshold = Duration::from_millis(300); // 300ms for a double-click
     textarea.set_block(Block::default().title("Search").borders(Borders::ALL));
+    let search_block = Block::default().title("Search").borders(Borders::ALL);
     let mut list_state = ListState::default();
     list_state.select(Some(0)); // Start with first item selected
-    
-                        let mut binding  = list.clone();
+
+    let mut binding = list.clone();
     match arg {
         Some(argument) => {
             textarea.insert_str(argument);
-                binding = binding.iter()
+            let search_query = textarea.lines().join("\n");
+            binding = binding
+                .iter()
                 .filter(|a| {
-                    num_extract(&a.display_name)
-                        .contains(&num_extract(&search_query))
-                        && char_extract(&a.display_name)
-                            .contains(&char_extract(&search_query))
+                    num_extract(&a.display_name).contains(&num_extract(&search_query))
+                        && char_extract(&a.display_name).contains(&char_extract(&search_query))
                 })
                 .cloned()
-                    .collect();
+                .collect();
             for item in &mut binding {
                 //   item.score = normalized_damerau_levenshtein(
                 //       &search_query,
@@ -119,12 +120,14 @@ fn run_app<B: Backend>(
                 item.score = strsim::jaro_winkler(&search_query, &item.display_name);
             }
             binding.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
- 
-       }
+            //println!("{}",format!("{:#?}", search_query).chars().filter(|c| !c.is_whitespace()).collect::<String>());
+            //std::thread::sleep(std::time::Duration::from_millis(3000));
+
+            list_state.select(Some(0)); // Start with first item selected
+        }
         _ => {}
     }
 
-   let search_block = Block::default().title("Search").borders(Borders::ALL);
     loop {
         terminal.draw(|f| {
             let chunks = Layout::default()
@@ -135,7 +138,7 @@ fn run_app<B: Backend>(
                 ])
                 .split(f.size());
 
-            // Search Box
+            // Search Box/
             let list_items: Vec<ListItem> = binding
                 .iter()
                 .enumerate()
@@ -145,7 +148,7 @@ fn run_app<B: Backend>(
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    ListItem::new(item.display_name.clone() ).style(style)
+                    ListItem::new(item.display_name.clone()).style(style)
                 })
                 .collect();
 
@@ -171,7 +174,6 @@ fn run_app<B: Backend>(
                         let (x, y) = (mouse_event.column, mouse_event.row);
 
                         // Write a message to the socket
-                        //            pipe.write_all(format!("x:{} y:{}\n", x, y).as_bytes())?;
                         if y > 0 {
                             list_state.select(Some((y - 1) as usize));
 
@@ -233,10 +235,9 @@ fn run_app<B: Backend>(
                     KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         return Ok(None);
                     }
-                    KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        return Ok(None);
-                    }
-
+                    //KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    //    return Ok(None);
+                    //}
                     KeyCode::Esc => return Ok(None),
                     KeyCode::Enter => {
                         if binding.len() == 0 {
@@ -271,9 +272,18 @@ fn run_app<B: Backend>(
                         list_state.select(Some(i));
                     }
 
-                    KeyCode::Char(_) | KeyCode::Backspace => {
+                    KeyCode::Backspace if !textarea.lines().join("").is_empty() => {
                         list_state.select(Some(0));
                     }
+                    KeyCode::Char('h') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        if !textarea.lines().join("").is_empty() {
+                            list_state.select(Some(0));
+                        }
+                    }
+                    KeyCode::Char(_) => {
+                        list_state.select(Some(0));
+                    }
+
 
                     _ => {}
                 }
@@ -282,16 +292,15 @@ fn run_app<B: Backend>(
             }
             let search_query = textarea.lines().join("\n");
             // Filter answers based on the search query
-            binding = list.clone() 
+            binding = list
+                .clone()
                 .iter()
                 .filter(|a| {
-                    num_extract(&a.display_name)
-                        .contains(&num_extract(&search_query))
-                        && char_extract(&a.display_name)
-                            .contains(&char_extract(&search_query))
+                    num_extract(&a.display_name).contains(&num_extract(&search_query))
+                        && char_extract(&a.display_name).contains(&char_extract(&search_query))
                 })
                 .cloned()
-                    .collect();
+                .collect();
             for item in &mut binding {
                 //   item.score = normalized_damerau_levenshtein(
                 //       &search_query,
@@ -302,7 +311,6 @@ fn run_app<B: Backend>(
             binding.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
         }
     }
-
     match list_state.selected() {
         Some(i) => Ok(Some(binding[i].clone())),
         None => Ok(None),
@@ -354,4 +362,9 @@ the right way to implement the functionality of gossh is to split
 numbers from alphabet charcters in the input.
 For example 100ooz input definitely should have highest score with yooz100,
 but since the number is in the beginning, it matches pirouz100
+*/
+
+/*
+TODO: mouse click resets from beginning, backspace when input is empty
+
 */

@@ -17,7 +17,7 @@ pub struct List {
     pub score: f64,
     pub hostname: String,
     pub alias: String,
-    pub display_name: String
+    pub display_name: String,
 }
 
 impl fmt::Display for List {
@@ -61,7 +61,7 @@ impl Server {
             let mut server = List {
                 hostname: "".to_owned(),
                 alias: "".to_owned(),
-                display_name : "".to_owned(),
+                display_name: "".to_owned(),
                 score: 0.0,
             };
             for i in item.split("\n").map(|f| f.trim()) {
@@ -70,9 +70,16 @@ impl Server {
                 let _2 = i.next().unwrap_or("");
                 if _1.starts_with("HostName") {
                     server.hostname = _2.to_owned();
-                    if server.hostname.chars().filter(|c| *c != '.').collect::<Vec<_>>().iter().all(|c| c.is_ascii_digit()){
+                    if server
+                        .hostname
+                        .chars()
+                        .filter(|c| *c != '.')
+                        .collect::<Vec<_>>()
+                        .iter()
+                        .all(|c| c.is_ascii_digit())
+                    {
                         server.display_name = server.hostname.clone();
-                    }else{
+                    } else {
                         server.display_name = server.hostname.split(".").next().unwrap().to_owned();
                     }
                 } else if _1.starts_with("Host") {
