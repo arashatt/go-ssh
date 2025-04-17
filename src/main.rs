@@ -4,7 +4,10 @@ use crossterm::{
     cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition},
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode, Clear, ClearType},
+    terminal::{
+        Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+        enable_raw_mode,
+    },
 };
 use list::Server;
 use ratatui::widgets::ListState;
@@ -69,18 +72,15 @@ fn main() -> io::Result<()> {
         println!("Error: {:?}", err);
     } else {
         if let Some(server) = res.unwrap() {
+            let mut stdout = std::io::stdout();
+            // Move cursor to the top-left corner
+            execute!(stdout, MoveTo(0, 0)).unwrap();
 
-    let mut stdout = std::io::stdout();
-    // Move cursor to the top-left corner
-    execute!(stdout, MoveTo(0, 0)).unwrap();
-
-    // Clear the entire screen
-    execute!(stdout, Clear(ClearType::All)).unwrap();
-
+            // Clear the entire screen
+            execute!(stdout, Clear(ClearType::All)).unwrap();
 
             let _ = Command::new("tput").arg("reset").spawn();
             let _ = Command::new("ssh").arg(server.alias).exec();
-
         }
     }
 
@@ -101,9 +101,19 @@ fn run_app<B: Backend>(
     let mut last_click_time: Option<Instant> = None;
     let mut last_click_position: Option<(u16, u16)> = None;
     let double_click_threshold = Duration::from_millis(300); // 300ms for a double-click
+    let mut height = None;
     textarea.set_block(Block::default().title("Search").borders(Borders::ALL));
     let search_block = Block::default().title("Search").borders(Borders::ALL);
+    let mut state = ListViewState {
+        selected: 0,
+        scroll: 0,
+    };
     let mut list_state = ListState::default();
+    struct ListViewState {
+        selected: usize,
+        scroll: usize,
+    }
+
     list_state.select(Some(0)); // Start with first item selected
 
     let mut binding = list.clone();
@@ -144,22 +154,47 @@ fn run_app<B: Backend>(
                     Constraint::Length(3), // Search Box
                 ])
                 .split(f.size());
-
+            height = Some(chunks[0].height.saturating_sub(2));
+            //binding.push(list::List::default(format!("{}, {}", chunks[0].height, chunks[1].height)));
+            let total_items = binding.len();
             // Search Box/
             let list_items: Vec<ListItem> = binding
-                .iter()
+                .iter_mut()
                 .enumerate()
                 .map(|(i, item)| {
-                    let style = if i == list_state.selected().unwrap() {
-                        Style::default().fg(Color::Yellow)
-                    } else {
-                        Style::default().fg(Color::White)
+                    let style = match list_state.selected() {
+                        Some(current) => {
+                            if i == current {
+                                Style::default().fg(Color::Yellow)
+                            } else {
+                                let _1 = i - list_state.offset();
+                                let mut set = 0;
+                                if current > i {
+                                    set = current - i;
+                                }else{
+                                    set = i - current;
+                                }
+                                let mut dim_factor = 0;
+                                if ((set as u32 * 5) < 200){
+                                 dim_factor = ( set as u8 * 5); // Dims each item more as the index increases
+                                } else {
+                                    dim_factor = 200;
+                                }
+                                let dim_color = Color::Rgb(
+                                    255 - dim_factor,
+                                    255 - dim_factor,
+                                    255 - dim_factor,
+                                ); // Dimmer color
+
+                                Style::default().fg(dim_color)
+                            }
+                        }
+                        None => Style::default().fg(Color::White),
                     };
                     ListItem::new(item.display_name.clone()).style(style)
                 })
                 .collect();
 
-            // List of Answers
             let widget_list = List::new(list_items.clone())
                 .block(
                     Block::default()
@@ -173,7 +208,7 @@ fn run_app<B: Backend>(
             f.render_widget(&textarea, chunks[1]);
         })?;
 
-        if event::poll(std::time::Duration::from_millis(200))? {
+        if event::poll(std::time::Duration::from_millis(20))? {
             let event = event::read()?;
             if let Event::Mouse(mouse_event) = event {
                 match mouse_event.kind {
@@ -182,7 +217,8 @@ fn run_app<B: Backend>(
 
                         // Write a message to the socket
                         if y > 0 {
-                            list_state.select(Some((y - 1) as usize));
+                            list_state
+                                .select(Some((list_state.offset() + (y - 1) as usize) as usize));
 
                             let current_time = Instant::now();
                             if let Some(last_time) = last_click_time {
@@ -207,30 +243,10 @@ fn run_app<B: Backend>(
                         // If so, map `y` to list index and update your selection.
                     }
                     MouseEventKind::ScrollUp => {
-                        let i = match list_state.selected() {
-                            Some(i) => {
-                                if i == 0 {
-                                    binding.len() - 1
-                                } else {
-                                    i - 1
-                                }
-                            }
-                            None => 0,
-                        };
-                        list_state.select(Some(i));
+                        list_state.select_previous();
                     }
                     MouseEventKind::ScrollDown => {
-                        let i = match list_state.selected() {
-                            Some(i) => {
-                                if i >= binding.len() - 1 {
-                                    0
-                                } else {
-                                    i + 1
-                                }
-                            }
-                            None => 0,
-                        };
-                        list_state.select(Some(i));
+                        list_state.select_next();
                     }
                     _ => {}
                 }
@@ -253,30 +269,19 @@ fn run_app<B: Backend>(
                         break;
                     }
                     KeyCode::Down => {
-                        let i = match list_state.selected() {
-                            Some(i) => {
-                                if i >= binding.len() - 1 {
-                                    0
-                                } else {
-                                    i + 1
-                                }
-                            }
-                            None => 0,
-                        };
-                        list_state.select(Some(i));
+                        list_state.select_next();
                     }
                     KeyCode::Up => {
-                        let i = match list_state.selected() {
-                            Some(i) => {
-                                if i == 0 {
-                                    binding.len() - 1
-                                } else {
-                                    i - 1
-                                }
-                            }
-                            None => 0,
-                        };
-                        list_state.select(Some(i));
+                        list_state.select_previous();
+                    }
+                    KeyCode::Home | KeyCode::PageUp => {
+                        list_state.select(Some(list_state.offset()));
+                    }
+                    KeyCode::End | KeyCode::PageDown => {
+                        list_state.select(Some(list_state.offset()));
+                        if let Some(height) = height {
+                            list_state.scroll_down_by(height - 1);
+                        }
                     }
 
                     KeyCode::Backspace if !textarea.lines().join("").is_empty() => {
@@ -287,10 +292,10 @@ fn run_app<B: Backend>(
                             list_state.select(Some(0));
                         }
                     }
+
                     KeyCode::Char(_) => {
                         list_state.select(Some(0));
                     }
-
 
                     _ => {}
                 }

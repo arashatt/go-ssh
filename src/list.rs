@@ -4,11 +4,13 @@ use nom::bytes::complete::take_until;
 use nom::character::complete::{multispace0, newline};
 use nom::multi::separated_list0;
 use nom::sequence::{delimited, pair};
+use std::default::Default;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::path::PathBuf;
+
 // Import (via `use`) the `fmt` module to make it available.
 use std::fmt;
 pub struct Server {}
@@ -20,6 +22,16 @@ pub struct List {
     pub display_name: String,
 }
 
+impl List {
+    pub fn default(name: String) -> Self {
+        List {
+            score: 0.0,
+            hostname: "".to_owned(),
+            alias: "".to_owned(),
+            display_name: name,
+        }
+    }
+}
 impl fmt::Display for List {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // Write strictly the first element into the supplied output
