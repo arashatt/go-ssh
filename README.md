@@ -10,3 +10,4 @@ The path to generated output will be printed. (it's in the ./target/release dire
 
 the program requires glibc as a dependency (it's a common requisite)
 
+![demo](demo.gif)
