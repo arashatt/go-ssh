@@ -175,10 +175,10 @@ fn run_app<B: Backend>(
                                     set = i - current;
                                 }
                                 let mut dim_factor = 0;
-                                if ((set as u32 * 5) < 200){
-                                 dim_factor = ( set as u8 * 5); // Dims each item more as the index increases
+                                if ((set as u32 * 20) < 80){
+                                 dim_factor = ( set as u8 * 20); // Dims each item more as the index increases
                                 } else {
-                                    dim_factor = 200;
+                                    dim_factor = 80;
                                 }
                                 let dim_color = Color::Rgb(
                                     255 - dim_factor,
@@ -242,8 +242,7 @@ fn run_app<B: Backend>(
                         // You need to determine if (x, y) is within the list widget.
                         // If so, map `y` to list index and update your selection.
                     }
-                    MouseEventKind::ScrollUp => {
-                        list_state.select_previous();
+                    MouseEventKind::ScrollUp => { list_state.select_previous();
                     }
                     MouseEventKind::ScrollDown => {
                         list_state.select_next();
