@@ -4,6 +4,8 @@ use nom::bytes::complete::take_until;
 use nom::character::complete::{multispace0, newline};
 use nom::multi::separated_list0;
 use nom::sequence::{delimited, pair};
+use nom::combinator::{eof, rest};
+use nom::branch::alt;
 use std::default::Default;
 use std::env;
 use std::fs::File;
@@ -52,7 +54,7 @@ impl Server {
     pub fn parse_list(input: &str) -> IResult<&str, Vec<&str>> {
         delimited(
             multispace0,
-            separated_list0(pair(newline, newline), take_until("\n\n")),
+            separated_list0(newline , alt ( ( take_until("\nHost "), rest)) ),
             multispace0,
         )
         .parse(input)

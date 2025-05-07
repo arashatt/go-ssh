@@ -351,7 +351,7 @@ fn char_extract_test() {
     for i in list {
         let name = i.display_name;
 
-        println!("{}: {}", name, char_extract(name));
+        println!("{}: {}", name, char_extract(&name));
     }
 }
 #[test]
@@ -364,7 +364,7 @@ fn num_extract_test() {
     for i in list {
         let name = i.display_name;
 
-        println!("{}: {}", name, num_extract(name));
+        println!("{}: {}", name, num_extract(&name));
     }
 }
 
