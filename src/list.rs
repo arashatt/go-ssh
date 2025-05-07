@@ -14,7 +14,7 @@ use std::path::PathBuf;
 // Import (via `use`) the `fmt` module to make it available.
 use std::fmt;
 pub struct Server {}
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, PartialEq, PartialOrd)]
 pub struct List {
     pub score: f64,
     pub hostname: String,
@@ -22,16 +22,6 @@ pub struct List {
     pub display_name: String,
 }
 
-impl List {
-    pub fn default(name: String) -> Self {
-        List {
-            score: 0.0,
-            hostname: "".to_owned(),
-            alias: "".to_owned(),
-            display_name: name,
-        }
-    }
-}
 impl fmt::Display for List {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // Write strictly the first element into the supplied output
@@ -70,13 +60,8 @@ impl Server {
     pub fn hash_list(list: Vec<&str>) -> Vec<List> {
         let mut servers = Vec::new();
         for item in list {
-            let mut server = List {
-                hostname: "".to_owned(),
-                alias: "".to_owned(),
-                display_name: "".to_owned(),
-                score: 0.0,
-            };
-            for i in item.split("\n").map(|f| f.trim()) {
+            let mut server = List::default();
+           for i in item.split("\n").map(|f| f.trim()) {
                 let mut i = i.split(" ");
                 let _1 = i.next().unwrap_or("");
                 let _2 = i.next().unwrap_or("");
