@@ -20,7 +20,6 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem },
 };
 use std::env;
-use std::io::{Read, Write};
 use std::os::unix::process::CommandExt;
 use std::time::{Duration, Instant};
 use std::{
@@ -43,7 +42,10 @@ fn main() -> io::Result<()> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    enable_raw_mode()?;
+    if let Err(e) = enable_raw_mode(){
+        eprintln!("Terminal doesn't support raw mode: {}", e);
+        std::process::exit(1);
+    }
     let mut stdout = io::stdout();
     execute!(
         stdout,
@@ -53,7 +55,7 @@ fn main() -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let res = run_app(&mut terminal, running.clone(), arg);
+    let res = run_app(&mut terminal,  arg);
 
     disable_raw_mode()?;
     execute!(
@@ -84,11 +86,8 @@ fn main() -> io::Result<()> {
 
 fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
-    running: Arc<AtomicBool>,
     arg: Option<String>,
 ) -> io::Result<Option<list::List>> {
-    let search_query = String::new();
-    let server = Server {};
     let config_file = Server::get_list();
     let (_, raw_list) = Server::parse_list(&config_file).unwrap();
     let list: Vec<list::List> = Server::hash_list(raw_list);
@@ -98,7 +97,6 @@ fn run_app<B: Backend>(
     let double_click_threshold = Duration::from_millis(300); // 300ms for a double-click
     let mut height = None;
     textarea.set_block(Block::default().title("Search").borders(Borders::ALL));
-    let search_block = Block::default().title("Search").borders(Borders::ALL);
     let mut list_state = ListState::default();
 
     list_state.select(Some(0)); // Start with first item selected
@@ -127,7 +125,7 @@ fn run_app<B: Backend>(
             //println!("{}",format!("{:#?}", search_query).chars().filter(|c| !c.is_whitespace()).collect::<String>());
             //std::thread::sleep(std::time::Duration::from_millis(3000));
 
-            list_state.select(Some(0)); // Start with first item selected
+            list_state.select(None); // Start with first item selected
         }
         _ => {}
     }
@@ -139,10 +137,9 @@ loop {
                     Constraint::Min(1),    // List of Answers
                     Constraint::Length(3), // Search Box
                 ])
-                .split(f.size());
+                .split(f.area());
             height = Some(chunks[0].height.saturating_sub(2));
             //binding.push(list::List::default(format!("{}, {}", chunks[0].height, chunks[1].height)));
-            let total_items = binding.len();
             // Search Box/
             let list_items: Vec<ListItem> = binding
                 .iter_mut()

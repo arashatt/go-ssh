@@ -99,13 +99,11 @@ mod test {
 
     #[test]
     fn print_debug() {
-        let server: Server = Server {};
         let config_file: String = Server::get_list();
         println!("{:#?}", Server::parse_list(&config_file));
     }
     #[test]
     fn print_list_debug() {
-        let server: Server = Server {};
         let config_file: String = Server::get_list();
         let (_, list) = Server::parse_list(&config_file).unwrap();
         println!("{:#?}", Server::hash_list(list));
