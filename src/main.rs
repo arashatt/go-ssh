@@ -20,10 +20,8 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem },
 };
 use std::env;
-use std::fs::OpenOptions;
 use std::io::{Read, Write};
 use std::os::unix::process::CommandExt;
-use std::thread;
 use std::time::{Duration, Instant};
 use std::{
     io,
@@ -33,8 +31,6 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use strsim::normalized_damerau_levenshtein;
-use strsim::normalized_levenshtein;
 use tui_textarea::TextArea;
 
 fn main() -> io::Result<()> {
@@ -91,7 +87,7 @@ fn run_app<B: Backend>(
     running: Arc<AtomicBool>,
     arg: Option<String>,
 ) -> io::Result<Option<list::List>> {
-    let mut search_query = String::new();
+    let search_query = String::new();
     let server = Server {};
     let config_file = Server::get_list();
     let (_, raw_list) = Server::parse_list(&config_file).unwrap();
@@ -103,15 +99,7 @@ fn run_app<B: Backend>(
     let mut height = None;
     textarea.set_block(Block::default().title("Search").borders(Borders::ALL));
     let search_block = Block::default().title("Search").borders(Borders::ALL);
-    let mut state = ListViewState {
-        selected: 0,
-        scroll: 0,
-    };
     let mut list_state = ListState::default();
-    struct ListViewState {
-        selected: usize,
-        scroll: usize,
-    }
 
     list_state.select(Some(0)); // Start with first item selected
 
@@ -166,15 +154,15 @@ loop {
                                 Style::default().fg(Color::Yellow)
                             } else {
                                 let _1 = i - list_state.offset();
-                                let mut set = 0;
+                                let set;
                                 if current > i {
                                     set = current - i;
                                 }else{
                                     set = i - current;
                                 }
-                                let mut dim_factor = 0;
-                                if ((set as u32 * 20) < 80){
-                                 dim_factor = ( set as u8 * 20); // Dims each item more as the index increases
+                                let dim_factor;
+                                if (set as u32 * 20) < 80 {
+                                 dim_factor = set as u8 * 20; // Dims each item more as the index increases
                                 } else {
                                     dim_factor = 80;
                                 }
@@ -224,7 +212,7 @@ loop {
                                 if current_time.duration_since(last_time) <= double_click_threshold
                                 {
                                     if let Some((last_x, last_y)) = last_click_position {
-                                        if (last_x == x && last_y == y) {
+                                        if last_x == x && last_y == y {
                                             // Double-click detected on the same position
                                             //return Ok(Some(filtered_answers[selected_index].clone()));
                                             break;
