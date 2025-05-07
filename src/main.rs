@@ -1,7 +1,7 @@
 mod list;
 use crossterm::event::MouseEventKind;
 use crossterm::{
-    cursor::{DisableBlinking, EnableBlinking, MoveTo, RestorePosition, SavePosition},
+    cursor::MoveTo,
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
     execute,
     terminal::{
@@ -11,13 +11,13 @@ use crossterm::{
 };
 use list::Server;
 use ratatui::widgets::ListState;
-use ratatui::widgets::Padding;
+
 use ratatui::{
     Terminal,
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem },
 };
 use std::env;
 use std::fs::OpenOptions;
@@ -52,7 +52,6 @@ fn main() -> io::Result<()> {
     execute!(
         stdout,
         EnterAlternateScreen,
-        EnableMouseCapture,
         EnableMouseCapture
     )?;
     let backend = CrosstermBackend::new(stdout);
@@ -136,7 +135,7 @@ fn run_app<B: Backend>(
                 //   );
                 item.score = strsim::jaro_winkler(&search_query, &item.display_name);
             }
-            binding.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+            binding.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
             //println!("{}",format!("{:#?}", search_query).chars().filter(|c| !c.is_whitespace()).collect::<String>());
             //std::thread::sleep(std::time::Duration::from_millis(3000));
 
@@ -144,10 +143,9 @@ fn run_app<B: Backend>(
         }
         _ => {}
     }
-
-    loop {
+loop {
         terminal.draw(|f| {
-            let chunks = Layout::default()
+     let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
                     Constraint::Min(1),    // List of Answers
