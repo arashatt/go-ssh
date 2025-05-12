@@ -11,8 +11,10 @@ use std::env;
 use std::fs::File;
 use std::io::BufReader;
 use std::io::prelude::*;
+use std::path::Path;
 use std::path::PathBuf;
-
+use std::process;
+use users::{get_current_uid, get_user_by_uid};
 // Import (via `use`) the `fmt` module to make it available.
 use std::fmt;
 pub struct Server {}
@@ -33,10 +35,36 @@ impl fmt::Display for List {
         write!(f, "{}", self.alias)
     }
 }
+
+fn is_valid_home(username: &str, home: &Path) -> bool {
+    let components: Vec<_> = home.components().collect();
+    let is_home_match = components
+        .get(2)
+        .and_then(|c| c.as_os_str().to_str())
+        .map(|c| c == username)
+        .unwrap_or(false);
+    is_home_match
+
+    // if you want to enable root user, uncomment the two code below
+    //    let is_root = home == Path::new("/root");
+    //  is_home_match || is_root
+}
+
 fn expand_tilde(path: &str) -> PathBuf {
     if let Some(stripped) = path.strip_prefix("~/") {
         if let Some(home) = env::var_os("HOME") {
-            return PathBuf::from(home).join(stripped);
+            let current_uid = get_current_uid();
+            let user = get_user_by_uid(current_uid)
+                .ok_or("Failed to get current user")
+                .expect("Failed to get user");
+            let username = user.name().to_string_lossy();
+            if is_valid_home(&username, Path::new(&home)) {
+                return PathBuf::from(home).join(stripped);
+            } else {
+                eprintln!("Error: Permission denied");
+                eprintln!("{:#?}, {:#?}", username, Path::new(&home));
+                process::exit(1); // exit code 1 is conventional for general errors
+            }
         }
     }
     PathBuf::from(path)
