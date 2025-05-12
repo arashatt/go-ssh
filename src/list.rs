@@ -1,11 +1,11 @@
 use nom::IResult;
 use nom::Parser;
+use nom::branch::alt;
 use nom::bytes::complete::take_until;
 use nom::character::complete::{multispace0, newline};
+use nom::combinator::rest;
 use nom::multi::separated_list0;
 use nom::sequence::delimited;
-use nom::combinator::rest;
-use nom::branch::alt;
 use std::default::Default;
 use std::env;
 use std::fs::File;
@@ -54,7 +54,7 @@ impl Server {
     pub fn parse_list(input: &str) -> IResult<&str, Vec<&str>> {
         delimited(
             multispace0,
-            separated_list0(newline , alt ( ( take_until("\nHost "), rest)) ),
+            separated_list0(newline, alt((take_until("\nHost "), rest))),
             multispace0,
         )
         .parse(input)
@@ -63,7 +63,7 @@ impl Server {
         let mut servers = Vec::new();
         for item in list {
             let mut server = List::default();
-           for i in item.split("\n").map(|f| f.trim()) {
+            for i in item.split("\n").map(|f| f.trim()) {
                 let mut i = i.split(" ");
                 let _1 = i.next().unwrap_or("");
                 let _2 = i.next().unwrap_or("");

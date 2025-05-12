@@ -17,7 +17,7 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout},
     style::{Color, Style},
-    widgets::{Block, Borders, List, ListItem },
+    widgets::{Block, Borders, List, ListItem},
 };
 use std::env;
 use std::os::unix::process::CommandExt;
@@ -42,20 +42,16 @@ fn main() -> io::Result<()> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    if let Err(e) = enable_raw_mode(){
+    if let Err(e) = enable_raw_mode() {
         eprintln!("Terminal doesn't support raw mode: {}", e);
         std::process::exit(1);
     }
     let mut stdout = io::stdout();
-    execute!(
-        stdout,
-        EnterAlternateScreen,
-        EnableMouseCapture
-    )?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let res = run_app(&mut terminal,  arg);
+    let res = run_app(&mut terminal, arg);
 
     disable_raw_mode()?;
     execute!(
@@ -121,7 +117,11 @@ fn run_app<B: Backend>(
                 //   );
                 item.score = strsim::jaro_winkler(&search_query, &item.display_name);
             }
-            binding.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+            binding.sort_by(|a, b| {
+                b.score
+                    .partial_cmp(&a.score)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
             //println!("{}",format!("{:#?}", search_query).chars().filter(|c| !c.is_whitespace()).collect::<String>());
             //std::thread::sleep(std::time::Duration::from_millis(3000));
 
@@ -129,9 +129,9 @@ fn run_app<B: Backend>(
         }
         _ => {}
     }
-loop {
+    loop {
         terminal.draw(|f| {
-     let chunks = Layout::default()
+            let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
                     Constraint::Min(1),    // List of Answers
@@ -150,16 +150,15 @@ loop {
                             if i == current {
                                 Style::default().fg(Color::Yellow)
                             } else {
-                                let _1 = i - list_state.offset();
                                 let set;
                                 if current > i {
                                     set = current - i;
-                                }else{
+                                } else {
                                     set = i - current;
                                 }
                                 let dim_factor;
                                 if (set as u32 * 20) < 80 {
-                                 dim_factor = set as u8 * 20; // Dims each item more as the index increases
+                                    dim_factor = set as u8 * 20; // Dims each item more as the index increases
                                 } else {
                                     dim_factor = 80;
                                 }
@@ -198,8 +197,7 @@ loop {
                     MouseEventKind::Down(_) => {
                         let (x, y) = (mouse_event.column, mouse_event.row);
 
-                        // Write a message to the socket
-                        if y > 0 {
+                        if y > 0 && y - 1 < height.expect("Idon't know") {
                             list_state
                                 .select(Some((list_state.offset() + (y - 1) as usize) as usize));
 
@@ -225,7 +223,8 @@ loop {
                         // You need to determine if (x, y) is within the list widget.
                         // If so, map `y` to list index and update your selection.
                     }
-                    MouseEventKind::ScrollUp => { list_state.select_previous();
+                    MouseEventKind::ScrollUp => {
+                        list_state.select_previous();
                     }
                     MouseEventKind::ScrollDown => {
                         list_state.select_next();
