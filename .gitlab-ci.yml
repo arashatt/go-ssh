@@ -4,6 +4,8 @@ stages:
 build:
   stage: build
   image: rust:latest
+  before_script:
+  - export PATH="$HOME/.cargo/bin:$PATH"
   script:
     - cargo build --release
   artifacts:
