@@ -1,5 +1,5 @@
 [package]
-name = "gosshEA"
+name = "gossh"
 version = "0.1.0"
 edition = "2024"
 
@@ -11,3 +11,4 @@ ratatui = "0.29.0"
 strsim = "0.11.1"
 tui-scrollview = "0.5.1"
 tui-textarea = "0.7.0"
+users = "0.11.0"
