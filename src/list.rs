@@ -43,11 +43,12 @@ fn is_valid_home(username: &str, home: &Path) -> bool {
         .and_then(|c| c.as_os_str().to_str())
         .map(|c| c == username)
         .unwrap_or(false);
-    is_home_match
 
     // if you want to enable root user, uncomment the two code below
-    //    let is_root = home == Path::new("/root");
-    //  is_home_match || is_root
+        let is_root = home == Path::new("/root");
+      is_home_match || is_root
+
+    //is_home_match
 }
 
 fn expand_tilde(path: &str) -> PathBuf {
