@@ -74,6 +74,7 @@ fn main() -> io::Result<()> {
 
             let _ = Command::new("tput").arg("reset").spawn();
             let _ = Command::new("ssh").arg(server.alias).exec();
+            std::process::exit(1);
         }
     }
 
@@ -125,7 +126,7 @@ fn run_app<B: Backend>(
             //println!("{}",format!("{:#?}", search_query).chars().filter(|c| !c.is_whitespace()).collect::<String>());
             //std::thread::sleep(std::time::Duration::from_millis(3000));
 
-            list_state.select(None); // Start with first item selected
+            list_state.select(Some(0)); // Start with first item selected
         }
         _ => {}
     }
@@ -190,7 +191,7 @@ fn run_app<B: Backend>(
             f.render_widget(&textarea, chunks[1]);
         })?;
 
-        if event::poll(std::time::Duration::from_millis(20))? {
+        if event::poll(std::time::Duration::from_millis(150))? {
             let event = event::read()?;
             if let Event::Mouse(mouse_event) = event {
                 match mouse_event.kind {
