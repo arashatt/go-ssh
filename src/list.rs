@@ -46,7 +46,7 @@ fn is_valid_home(username: &str, home: &Path) -> bool {
 
     // if you want to enable root user, uncomment the two code below
     let is_root = home == Path::new("/root");
-    // is_home_match || is_root
+     //is_home_match || is_root
 
     is_home_match
 }

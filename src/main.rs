@@ -1,4 +1,5 @@
 mod list;
+mod tools;
 use crossterm::event::MouseEventKind;
 use crossterm::{
     cursor::MoveTo,
@@ -72,7 +73,6 @@ fn main() -> io::Result<()> {
             // Clear the entire screen
             execute!(stdout, Clear(ClearType::All)).unwrap();
 
-            let _ = Command::new("tput").arg("reset").spawn();
             let _ = Command::new("ssh").arg(server.alias).exec();
             std::process::exit(1);
         }
@@ -284,7 +284,7 @@ fn run_app<B: Backend>(
 
                 textarea.input(key);
             }
-            let search_query = textarea.lines().join("\n");
+            let search_query = tools::persian_to_qwerty(&textarea.lines().join("\n"));
             // Filter answers based on the search query
             binding = list
                 .clone()
