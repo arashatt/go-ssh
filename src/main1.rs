@@ -1,7 +1,13 @@
 mod list;
 mod tools;
-use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGQUIT, SIGTERM};
+use std::fs::OpenOptions;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
 use signal_hook::iterator::Signals;
+use signal_hook::consts::signal::{SIGINT, SIGHUP, SIGTERM, SIGQUIT, SIGUSR1, SIGUSR2};
+use signal_hook::consts::signal::*;
+use signal_hook::flag;
+
 use crossterm::event::MouseEventKind;
 use crossterm::{
     cursor::MoveTo,
@@ -28,24 +34,52 @@ use std::time::{Duration, Instant};
 use std::{
     io,
     process::Command,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tui_textarea::TextArea;
 
 fn main() -> io::Result<()> {
     let arg = env::args().nth(1); // 0 is the program name, so 1 is the first real argument
-    // Set up signal handler for SIGHUP
-    let mut signals = Signals::new(&[SIGINT, SIGQUIT, SIGTERM,SIGHUP])?;
-    // File to write to when connection is lost
+    let running = Arc::new(AtomicBool::new(true));
+    let running_clone = Arc::clone(&running);
 
-    // Wait for signals in a separate thread
-    std::thread::spawn(move || {
-        for sig in signals.forever() {
-            if sig == SIGHUP {
-                // Open file in append mode, create if it doesn't exist
-                std::process::exit(0);
+    let mut signals = Signals::new(&[
+        SIGINT,  // Ctrl+C
+        SIGHUP,  // Terminal disconnect / hangup
+        SIGTERM, // kill command
+        SIGQUIT, // Ctrl+\ (Unix)
+        SIGUSR1, // Custom user signal 1
+        SIGUSR2, // Custom user signal 2
+    ])?;
+        let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("signals.log")?;
+
+    let log_file_clone= Arc::new(Mutex::new(log_file));
+std::thread::spawn(move || {
+    for signal in signals.forever() {
+        let mut file = log_file_clone.lock().unwrap();
+        match signal {
+            SIGINT | SIGTERM | SIGQUIT | SIGHUP => {
+                writeln!(file, "Signal {} received. Exiting...", signal).unwrap();
+                running_clone.store(false, Ordering::SeqCst); // Tell main to quit
+                break;
+            }
+            SIGUSR1 => {
+                writeln!(file, "SIGUSR1 received.").unwrap();
+            }
+            SIGUSR2 => {
+                writeln!(file, "SIGUSR2 received.").unwrap();
+            }
+            _ => {
+                writeln!(file, "Unhandled signal: {}", signal).unwrap();
             }
         }
-    });
+    }
+});
 
     if let Err(e) = enable_raw_mode() {
         eprintln!("Terminal doesn't support raw mode: {}", e);
@@ -56,7 +90,8 @@ fn main() -> io::Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let res = run_app(&mut terminal, arg);
+    let res = run_app(&mut terminal, arg, running.clone());
+
     disable_raw_mode()?;
     execute!(
         terminal.backend_mut(),
@@ -80,12 +115,14 @@ fn main() -> io::Result<()> {
             std::process::exit(1);
         }
     }
+
     Ok(())
 }
 
 fn run_app<B: Backend>(
     terminal: &mut Terminal<B>,
     arg: Option<String>,
+    running: Arc<AtomicBool>,
 ) -> io::Result<Option<list::List>> {
     let config_file = Server::get_list();
     let (_, raw_list) = Server::parse_list(&config_file).unwrap();
@@ -305,6 +342,9 @@ fn run_app<B: Backend>(
                 item.score = strsim::jaro_winkler(&search_query, &item.display_name);
             }
             binding.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        }
+        if !running.load(Ordering::SeqCst) {
+            return Ok(None);
         }
     }
     match list_state.selected() {

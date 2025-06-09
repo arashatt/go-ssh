@@ -1,0 +1,335 @@
+mod list;
+use crossterm::event::KeyEvent;
+
+use crossterm::event::MouseEventKind;
+use crossterm::{
+    cursor::MoveTo,
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    execute,
+    terminal::{
+        Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+        enable_raw_mode,
+    },
+};
+use list::Server;
+use ratatui::widgets::ListState;
+
+use ratatui::{
+    Terminal,
+    backend::{Backend, CrosstermBackend},
+    layout::{Constraint, Direction, Layout},
+    style::{Color, Style},
+    widgets::{Block, Borders, List, ListItem},
+};
+use std::env;
+use std::os::unix::process::CommandExt;
+use std::time::{Duration, Instant};
+use std::{
+    io,
+    process::Command,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
+use tui_textarea::TextArea;
+
+fn main() -> io::Result<()> {
+    let arg = env::args().nth(1); // 0 is the program name, so 1 is the first real argument
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting Ctrl-C handler");
+
+    if let Err(e) = enable_raw_mode() {
+        eprintln!("Terminal doesn't support raw mode: {}", e);
+        std::process::exit(1);
+    }
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    let res = run_app(&mut terminal, arg);
+
+    disable_raw_mode()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    terminal.show_cursor()?;
+
+    if let Err(err) = res {
+        println!("Error: {:?}", err);
+    } else {
+        if let Some(server) = res.unwrap() {
+            let mut stdout = std::io::stdout();
+            // Move cursor to the top-left corner
+            execute!(stdout, MoveTo(0, 0)).unwrap();
+
+            // Clear the entire screen
+            execute!(stdout, Clear(ClearType::All)).unwrap();
+
+            let _ = Command::new("tput").arg("reset").spawn();
+            let _ = Command::new("ssh").arg(server.alias).exec();
+            std::process::exit(1);
+        }
+    }
+
+    Ok(())
+}
+
+fn run_app<B: Backend>(
+    terminal: &mut Terminal<B>,
+    arg: Option<String>,
+) -> io::Result<Option<list::List>> {
+    let config_file = Server::get_list();
+    let (_, raw_list) = Server::parse_list(&config_file).unwrap();
+    let list: Vec<list::List> = Server::hash_list(raw_list);
+    let mut textarea = TextArea::default();
+    let mut last_click_time: Option<Instant> = None;
+    let mut last_click_position: Option<(u16, u16)> = None;
+    let double_click_threshold = Duration::from_millis(300);
+    let mut height = None;
+    textarea.set_block(Block::default().title("Search").borders(Borders::ALL));
+    let mut list_state = ListState::default();
+    list_state.select(Some(0));
+
+    let mut binding = list.clone();
+    let mut previous_query = String::new();
+
+    if let Some(argument) = arg {
+        textarea.insert_str(&argument);
+        previous_query = argument;
+        binding = filter_and_score(&list, &previous_query);
+        list_state.select(Some(0));
+    }
+
+    loop {
+        terminal.draw(|f| {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(1), Constraint::Length(3)])
+                .split(f.area());
+            height = Some(chunks[0].height.saturating_sub(2));
+
+            let list_items: Vec<ListItem> = create_list_items(&binding, &list_state);
+
+            let widget_list = List::new(list_items)
+                .block(
+                    Block::default()
+                        .title("Limoo Host Servers")
+                        .borders(Borders::ALL),
+                )
+                .highlight_symbol(">> ");
+
+            f.render_stateful_widget(widget_list, chunks[0], &mut list_state);
+            f.render_widget(&textarea, chunks[1]);
+        })?;
+
+        if event::poll(Duration::from_millis(500))? {
+            let event = event::read()?;
+            handle_event(
+                &event,
+                &mut list_state,
+                &mut textarea,
+                height,
+                &mut last_click_time,
+                &mut last_click_position,
+            );
+            if matches!(
+                event,
+                Event::Key(KeyEvent {
+                    code: KeyCode::Enter,
+                    ..
+                })
+            ) && !binding.is_empty()
+            {
+                break;
+            }
+
+            let search_query = textarea.lines().join("\n");
+            if search_query != previous_query {
+                previous_query = search_query.clone();
+                binding = filter_and_score(&list, &search_query);
+            }
+        } else {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    Ok(list_state.selected().map(|i| binding[i].clone()))
+}
+
+fn filter_and_score(list: &[list::List], query: &str) -> Vec<list::List> {
+    let mut filtered: Vec<_> = list
+        .iter()
+        .filter(|a| {
+            num_extract(&a.display_name).contains(&num_extract(query))
+                && char_extract(&a.display_name).contains(&char_extract(query))
+        })
+        .cloned()
+        .collect();
+
+    for item in &mut filtered {
+        item.score = strsim::jaro_winkler(query, &item.display_name);
+    }
+
+    filtered.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+    filtered
+}
+
+fn create_list_items(binding: &[list::List], list_state: &ListState) -> Vec<ListItem> {
+    binding
+        .iter()
+        .enumerate()
+        .map(|(i, item)| {
+            let style = match list_state.selected() {
+                Some(current) => {
+                    if i == current {
+                        Style::default().fg(Color::Yellow)
+                    } else {
+                        let set = current.abs_diff(i);
+                        let dim_factor = (set as u8 * 20).min(80);
+                        let dim_color =
+                            Color::Rgb(255 - dim_factor, 255 - dim_factor, 255 - dim_factor);
+                        Style::default().fg(dim_color)
+                    }
+                }
+                None => Style::default().fg(Color::White),
+            };
+            ListItem::new(item.display_name.clone()).style(style)
+        })
+        .collect()
+}
+
+fn handle_event(
+    event: &Event,
+    list_state: &mut ListState,
+    textarea: &mut TextArea,
+    height: Option<u16>,
+    last_click_time: &mut Option<Instant>,
+    last_click_position: &mut Option<(u16, u16)>,
+) {
+    match event {
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Down(_),
+            column,
+            row,
+            ..
+        }) => {
+            if let Some(h) = height {
+                if *row > 0 && *row - 1 < h {
+                    list_state.select(Some(list_state.offset() + (*row - 1) as usize));
+                    let current_time = Instant::now();
+                    if let Some(last_time) = last_click_time {
+                        if current_time.duration_since(*last_time) <= Duration::from_millis(300) {
+                            if let Some((lx, ly)) = last_click_position {
+                                if *lx == *column && *ly == *row {
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    *last_click_time = Some(current_time);
+                    *last_click_position = Some((*column, *row));
+                }
+            }
+        }
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            ..
+        }) => {
+            list_state.select_previous();
+        }
+        Event::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            ..
+        }) => {
+            list_state.select_next();
+        }
+        Event::Key(KeyEvent { code, modifiers }) => {
+            match code {
+                KeyCode::Char('c') | KeyCode::Char('d')
+                    if modifiers.contains(KeyModifiers::CONTROL) => {}
+                KeyCode::Esc => {}
+                KeyCode::Down => list_state.select_next(),
+                KeyCode::Up => list_state.select_previous(),
+                KeyCode::Home | KeyCode::PageUp => list_state.select(Some(list_state.offset())),
+                KeyCode::End | KeyCode::PageDown => {
+                    list_state.select(Some(list_state.offset()));
+                    if let Some(h) = height {
+                        list_state.scroll_down_by(h - 1);
+                    }
+                }
+                KeyCode::Backspace | KeyCode::Char('h')
+                    if !textarea.lines().join("").is_empty() =>
+                {
+                    list_state.select(Some(0));
+                }
+                KeyCode::Char(_) => {
+                    list_state.select(Some(0));
+                }
+                _ => {}
+            }
+            textarea.input(*code);
+        }
+        _ => {}
+    }
+}
+
+fn num_extract(name: &str) -> String {
+    name.chars()
+        .filter(|a| *a >= '0' && *a <= '9')
+        .collect::<String>()
+        .to_owned()
+}
+fn char_extract(name: &str) -> String {
+    name.chars()
+        .filter(|a| (*a >= 'a' && *a <= 'z') || (*a >= 'A' && *a <= 'Z'))
+        .collect::<String>()
+        .to_owned()
+}
+
+#[test]
+fn char_extract_test() {
+    let server = Server {};
+    let config_file = Server::get_list();
+    let (_, list) = Server::parse_list(&config_file).unwrap();
+
+    let list = Server::hash_list(list);
+    for i in list {
+        let name = i.display_name;
+
+        println!("{}: {}", name, char_extract(&name));
+    }
+}
+#[test]
+fn num_extract_test() {
+    let server = Server {};
+    let config_file = Server::get_list();
+    let (_, list) = Server::parse_list(&config_file).unwrap();
+
+    let list = Server::hash_list(list);
+    for i in list {
+        let name = i.display_name;
+
+        println!("{}: {}", name, num_extract(&name));
+    }
+}
+
+/*
+the right way to implement the functionality of gossh is to split
+numbers from alphabet charcters in the input.
+For example 100ooz input definitely should have highest score with yooz100,
+but since the number is in the beginning, it matches pirouz100
+*/
+
+/*
+TODO: mouse click resets from beginning, backspace when input is empty
+
+*/

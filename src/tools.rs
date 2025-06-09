@@ -47,7 +47,7 @@ fn persian_keymap() -> HashMap<char, char> {
     map.insert('و', ',');
     map.insert('؟', '?');
     map.insert('،', ','); // Persian comma
-                         // Persian digits → English digits
+    // Persian digits → English digits
     map.insert('۰', '0');
     map.insert('۱', '1');
     map.insert('۲', '2');
@@ -59,7 +59,5 @@ fn persian_keymap() -> HashMap<char, char> {
     map.insert('۸', '8');
     map.insert('۹', '9');
 
-
     map
 }
-

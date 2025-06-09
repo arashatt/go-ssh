@@ -49,6 +49,7 @@ fn is_valid_home(username: &str, home: &Path) -> bool {
      //is_home_match || is_root
 
     is_home_match
+
 }
 
 fn expand_tilde(path: &str) -> PathBuf {
